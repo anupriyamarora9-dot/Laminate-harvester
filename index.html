@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Laminate Data Harvester</title>
+    <title>Laminate Harvester Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="importmap">
     {
@@ -14,77 +14,95 @@
     </script>
     <style>
         body { background-color: #0f172a; color: #f1f5f9; -webkit-tap-highlight-color: transparent; }
-        .haptic-btn:active { transform: scale(0.95); transition: transform 0.1s; }
+        .haptic-btn:active { transform: scale(0.98); transition: transform 0.05s; }
         .spinner { border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* Smooth scrolling for the table */
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #1e293b; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
     </style>
 </head>
-<body class="flex flex-col min-h-screen p-4 font-sans">
+<body class="flex flex-col min-h-screen font-sans">
 
-    <!-- Header & API Key Setup -->
-    <header class="mb-6">
-        <h1 class="text-2xl font-bold text-blue-400">Laminate Harvester</h1>
-        <div class="mt-2 flex gap-2">
-            <input type="password" id="apiKey" placeholder="Enter Gemini API Key" 
-                class="flex-grow bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <button id="saveKey" class="bg-blue-600 px-4 py-2 rounded text-sm font-semibold haptic-btn">Save</button>
+    <!-- Compact Header -->
+    <header class="p-4 bg-slate-900 border-b border-slate-800">
+        <div class="flex justify-between items-center mb-2">
+            <h1 class="text-xl font-black text-blue-500 tracking-tight">LAMINATE AI</h1>
+            <button id="toggleSettings" class="text-slate-400 text-xs uppercase font-bold tracking-widest">API Key ⚙️</button>
+        </div>
+        <div id="settingsPanel" class="hidden flex gap-2 pb-2">
+            <input type="password" id="apiKey" placeholder="Gemini API Key" 
+                class="flex-grow bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <button id="saveKey" class="bg-slate-700 px-4 py-2 rounded-lg text-sm font-bold haptic-btn">Save</button>
         </div>
     </header>
 
-    <!-- Camera Feed Section -->
-    <main class="flex-grow space-y-4">
-        <div class="relative rounded-xl overflow-hidden border-2 border-slate-700 bg-black aspect-[4/3]">
+    <main class="flex-grow flex flex-col p-4 gap-4">
+        
+        <!-- Camera Container -->
+        <div class="relative rounded-2xl overflow-hidden border-2 border-slate-700 bg-black shadow-2xl aspect-[4/3] w-full mx-auto max-w-md">
             <video id="video" autoplay playsinline class="w-full h-full object-cover"></video>
             <canvas id="captureCanvas" class="hidden"></canvas>
             
-            <!-- Visual Overlay/Spinner -->
-            <div id="loadingOverlay" class="absolute inset-0 bg-black/60 flex items-center justify-center hidden">
-                <div class="flex flex-col items-center gap-2">
+            <!-- Processing Overlay -->
+            <div id="loadingOverlay" class="absolute inset-0 bg-slate-900/80 flex items-center justify-center hidden z-10">
+                <div class="flex flex-col items-center gap-3">
                     <div class="spinner"></div>
-                    <span class="text-sm font-medium">Processing OCR...</span>
+                    <span class="text-blue-400 font-bold tracking-widest text-xs uppercase">Analyzing Label...</span>
                 </div>
             </div>
         </div>
 
-        <button id="captureBtn" class="w-full bg-blue-500 hover:bg-blue-400 text-white py-5 rounded-2xl text-xl font-bold shadow-lg shadow-blue-900/20 haptic-btn flex items-center justify-center gap-3">
-            📸 Capture & Process
-        </button>
+        <!-- Direct Action Area -->
+        <div class="flex flex-col gap-3 max-w-md mx-auto w-full">
+            <button id="captureBtn" class="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white py-4 rounded-2xl text-xl font-black shadow-xl shadow-blue-900/40 haptic-btn flex items-center justify-center gap-3 border-b-4 border-blue-800">
+                <span>📸 SCAN LABEL</span>
+            </button>
 
-        <!-- Data Accumulator -->
-        <div class="mt-8">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-semibold">Scanned Data</h2>
-                <button id="exportBtn" class="text-xs bg-emerald-600 px-3 py-1.5 rounded-lg font-bold haptic-btn">Export CSV</button>
+            <!-- Small Preview Thumbnail (Appears after first scan) -->
+            <div id="previewContainer" class="flex items-center gap-3 bg-slate-800/50 p-2 rounded-xl border border-slate-700 hidden">
+                <img id="lastCaptureThumb" class="w-16 h-16 object-cover rounded-lg border border-slate-600 shadow-lg">
+                <div class="flex flex-col">
+                    <span class="text-[10px] uppercase font-bold text-slate-500">Last Capture</span>
+                    <span id="lastCaptureStatus" class="text-xs text-blue-300 font-medium italic italic">Processing...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Section -->
+        <div class="flex-grow flex flex-col min-h-0 mt-2">
+            <div class="flex justify-between items-end mb-2">
+                <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400">Scanned Inventory</h2>
+                <button id="exportBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-3 py-1.5 rounded-lg font-black haptic-btn transition-colors uppercase">Export CSV</button>
             </div>
             
-            <div class="bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
-                <div class="max-h-[300px] overflow-y-auto">
+            <div class="flex-grow bg-slate-800/80 rounded-2xl border border-slate-700 overflow-hidden flex flex-col shadow-inner">
+                <div class="flex-grow overflow-y-auto custom-scroll">
                     <table class="w-full text-left text-sm border-collapse">
-                        <thead class="sticky top-0 bg-slate-900 border-b border-slate-700">
+                        <thead class="sticky top-0 bg-slate-900 text-[10px] uppercase tracking-tighter text-slate-500 border-b border-slate-700">
                             <tr>
-                                <th class="p-3 font-medium">Code</th>
-                                <th class="p-3 font-medium">Laminate Name</th>
-                                <th class="p-3 text-right">Action</th>
+                                <th class="p-3">Code</th>
+                                <th class="p-3">Laminate Name</th>
+                                <th class="p-3 text-right">Del</th>
                             </tr>
                         </thead>
-                        <tbody id="dataTableBody">
-                            <!-- Rows injected here -->
+                        <tbody id="dataTableBody" class="divide-y divide-slate-700/50">
+                            <!-- Rows -->
                         </tbody>
                     </table>
-                    <div id="emptyState" class="p-8 text-center text-slate-500 italic">No samples scanned yet.</div>
+                    <div id="emptyState" class="p-12 text-center flex flex-col items-center gap-2">
+                        <div class="text-3xl opacity-20">📋</div>
+                        <div class="text-slate-500 text-sm italic font-light">List is empty. Scan a label to start.</div>
+                    </div>
                 </div>
             </div>
         </div>
     </main>
 
-    <footer class="mt-6 text-center text-xs text-slate-500">
-        System: Senior Architect Vision AI | Gemini 1.5 Flash
-    </footer>
-
     <script type="module">
         import { GoogleGenerativeAI } from "@google/generative-ai";
 
-        // --- State Management ---
         let scannedData = [];
         const video = document.getElementById('video');
         const canvas = document.getElementById('captureCanvas');
@@ -92,8 +110,15 @@
         const tableBody = document.getElementById('dataTableBody');
         const emptyState = document.getElementById('emptyState');
         const loadingOverlay = document.getElementById('loadingOverlay');
+        const lastCaptureThumb = document.getElementById('lastCaptureThumb');
+        const previewContainer = document.getElementById('previewContainer');
+        const lastCaptureStatus = document.getElementById('lastCaptureStatus');
 
-        // --- Initialization ---
+        // Toggle Settings Logic
+        document.getElementById('toggleSettings').addEventListener('click', () => {
+            document.getElementById('settingsPanel').classList.toggle('hidden');
+        });
+
         document.addEventListener('DOMContentLoaded', () => {
             const savedKey = localStorage.getItem('gemini_api_key');
             if (savedKey) apiKeyInput.value = savedKey;
@@ -102,41 +127,51 @@
 
         document.getElementById('saveKey').addEventListener('click', () => {
             localStorage.setItem('gemini_api_key', apiKeyInput.value);
-            alert('API Key Saved!');
+            alert('Key Saved. Ready to Scan.');
+            document.getElementById('settingsPanel').classList.add('hidden');
         });
 
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment", focusMode: "continuous" }
+                    video: { 
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
                 });
                 video.srcObject = stream;
             } catch (err) {
-                console.error("Camera error:", err);
-                alert("Camera permission denied or not found.");
+                alert("Camera access required for OCR scanning.");
             }
         }
 
-        // --- Core Logic: Capture & Process ---
         document.getElementById('captureBtn').addEventListener('click', async () => {
             const key = apiKeyInput.value;
-            if (!key) return alert("Please enter an API Key first.");
+            if (!key) return alert("Enter API Key in settings first.");
 
+            // 1. UI: Immediate Feedback
             loadingOverlay.classList.remove('hidden');
-            
+            previewContainer.classList.remove('hidden');
+            lastCaptureStatus.textContent = "Processing...";
+            window.navigator.vibrate?.(40);
+
             try {
-                // 1. Capture Frame
+                // 2. Capture and show thumbnail
                 const context = canvas.getContext('2d');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+                
+                const fullImageData = canvas.toDataURL('image/jpeg', 0.7);
+                lastCaptureThumb.src = fullImageData;
+                const base64Image = fullImageData.split(',')[1];
 
-                // 2. Initialize Gemini
+                // 3. AI Processing
                 const genAI = new GoogleGenerativeAI(key);
                 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-                const prompt = `Act as a precision OCR engine. Extract the 5-digit sample code (include all trailing letters/symbols) and the laminate name. Return ONLY a JSON object: {"code": "...", "name": "..."}. If the image is blurry or data is missing, return {"error": "retry"}.`;
+                const prompt = `Act as a precision OCR engine for industrial labels. Extract the 5-digit sample code (including trailing letters like RH, LV, MR) and the laminate/wood name. Return ONLY JSON: {"code": "...", "name": "..."}. If failed, return {"error": "retry"}.`;
 
                 const result = await model.generateContent([
                     prompt,
@@ -144,76 +179,62 @@
                 ]);
 
                 const response = await result.response;
-                let text = response.text().trim();
-                
-                // Clean markdown if Gemini returns it
-                text = text.replace(/```json|```/g, "");
+                let text = response.text().trim().replace(/```json|```/g, "");
                 const data = JSON.parse(text);
 
-                if (data.error === "retry") {
-                    alert("Scan failed. Please ensure the label is in focus and retry.");
+                if (data.error) {
+                    lastCaptureStatus.textContent = "Failed. Try again.";
+                    lastCaptureStatus.className = "text-xs text-red-400 font-bold";
                 } else {
                     addRecord(data.code, data.name);
+                    lastCaptureStatus.textContent = "Success: " + data.code;
+                    lastCaptureStatus.className = "text-xs text-emerald-400 font-bold";
+                    window.navigator.vibrate?.([40, 100, 40]);
                 }
 
             } catch (err) {
-                console.error("Processing Error:", err);
-                alert("Error: Check API key or connection. " + err.message);
+                console.error(err);
+                lastCaptureStatus.textContent = "System Error";
+                alert("Scan Error: " + err.message);
             } finally {
                 loadingOverlay.classList.add('hidden');
             }
         });
 
-        // --- Table & Accumulator Management ---
         function addRecord(code, name) {
-            const record = {
-                id: Date.now(),
-                code,
-                name,
-                timestamp: new Date().toLocaleString()
-            };
+            const record = { id: Date.now(), code, name, timestamp: new Date().toLocaleString() };
             scannedData.unshift(record);
             renderTable();
-            window.navigator.vibrate?.(50); // Feedback for Android
         }
 
-        function deleteRecord(id) {
+        window.deleteEntry = (id) => {
             scannedData = scannedData.filter(item => item.id !== id);
             renderTable();
-        }
+        };
 
         function renderTable() {
-            emptyState.style.display = scannedData.length ? 'none' : 'block';
+            emptyState.style.display = scannedData.length ? 'none' : 'flex';
             tableBody.innerHTML = scannedData.map(item => `
-                <tr class="border-b border-slate-700/50">
-                    <td class="p-3 font-mono text-blue-300">${item.code}</td>
-                    <td class="p-3">${item.name}</td>
+                <tr class="hover:bg-slate-700/30 transition-colors">
+                    <td class="p-3 font-mono text-blue-400 font-bold">${item.code}</td>
+                    <td class="p-3 text-slate-200 text-xs">${item.name}</td>
                     <td class="p-3 text-right">
-                        <button onclick="window.deleteEntry(${item.id})" class="text-red-400 hover:text-red-300 font-bold px-2 py-1">✕</button>
+                        <button onclick="window.deleteEntry(${item.id})" class="text-slate-500 hover:text-red-400 p-2">✕</button>
                     </td>
                 </tr>
             `).join('');
         }
 
-        // Global bridge for inline onclick
-        window.deleteEntry = deleteRecord;
-
-        // --- Export Engine ---
         document.getElementById('exportBtn').addEventListener('click', () => {
-            if (scannedData.length === 0) return alert("No data to export.");
-
-            const headers = "Sample Code,Laminate Name,Timestamp\n";
-            const rows = scannedData.map(r => `"${r.code}","${r.name}","${r.timestamp}"`).join("\n");
-            const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
-            
-            const link = document.createElement("a");
+            if (!scannedData.length) return;
+            const headers = "Code,Name,Timestamp\n";
+            const csv = scannedData.map(r => `"${r.code}","${r.name}","${r.timestamp}"`).join("\n");
+            const blob = new Blob([headers + csv], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `Laminate_Data_${new Date().toISOString().slice(0,10)}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Laminate_Data_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
+            a.click();
         });
     </script>
 </body>
