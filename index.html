@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Laminate Data Harvester</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "@google/generative-ai": "https://esm.run/@google/generative-ai"
+      }
+    }
+    </script>
+    <style>
+        body { background-color: #0f172a; color: #f1f5f9; -webkit-tap-highlight-color: transparent; }
+        .haptic-btn:active { transform: scale(0.95); transition: transform 0.1s; }
+        .spinner { border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen p-4 font-sans">
+
+    <!-- Header & API Key Setup -->
+    <header class="mb-6">
+        <h1 class="text-2xl font-bold text-blue-400">Laminate Harvester</h1>
+        <div class="mt-2 flex gap-2">
+            <input type="password" id="apiKey" placeholder="Enter Gemini API Key" 
+                class="flex-grow bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button id="saveKey" class="bg-blue-600 px-4 py-2 rounded text-sm font-semibold haptic-btn">Save</button>
+        </div>
+    </header>
+
+    <!-- Camera Feed Section -->
+    <main class="flex-grow space-y-4">
+        <div class="relative rounded-xl overflow-hidden border-2 border-slate-700 bg-black aspect-[4/3]">
+            <video id="video" autoplay playsinline class="w-full h-full object-cover"></video>
+            <canvas id="captureCanvas" class="hidden"></canvas>
+            
+            <!-- Visual Overlay/Spinner -->
+            <div id="loadingOverlay" class="absolute inset-0 bg-black/60 flex items-center justify-center hidden">
+                <div class="flex flex-col items-center gap-2">
+                    <div class="spinner"></div>
+                    <span class="text-sm font-medium">Processing OCR...</span>
+                </div>
+            </div>
+        </div>
+
+        <button id="captureBtn" class="w-full bg-blue-500 hover:bg-blue-400 text-white py-5 rounded-2xl text-xl font-bold shadow-lg shadow-blue-900/20 haptic-btn flex items-center justify-center gap-3">
+            📸 Capture & Process
+        </button>
+
+        <!-- Data Accumulator -->
+        <div class="mt-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold">Scanned Data</h2>
+                <button id="exportBtn" class="text-xs bg-emerald-600 px-3 py-1.5 rounded-lg font-bold haptic-btn">Export CSV</button>
+            </div>
+            
+            <div class="bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
+                <div class="max-h-[300px] overflow-y-auto">
+                    <table class="w-full text-left text-sm border-collapse">
+                        <thead class="sticky top-0 bg-slate-900 border-b border-slate-700">
+                            <tr>
+                                <th class="p-3 font-medium">Code</th>
+                                <th class="p-3 font-medium">Laminate Name</th>
+                                <th class="p-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody">
+                            <!-- Rows injected here -->
+                        </tbody>
+                    </table>
+                    <div id="emptyState" class="p-8 text-center text-slate-500 italic">No samples scanned yet.</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="mt-6 text-center text-xs text-slate-500">
+        System: Senior Architect Vision AI | Gemini 1.5 Flash
+    </footer>
+
+    <script type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+
+        // --- State Management ---
+        let scannedData = [];
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('captureCanvas');
+        const apiKeyInput = document.getElementById('apiKey');
+        const tableBody = document.getElementById('dataTableBody');
+        const emptyState = document.getElementById('emptyState');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('gemini_api_key');
+            if (savedKey) apiKeyInput.value = savedKey;
+            initCamera();
+        });
+
+        document.getElementById('saveKey').addEventListener('click', () => {
+            localStorage.setItem('gemini_api_key', apiKeyInput.value);
+            alert('API Key Saved!');
+        });
+
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment", focusMode: "continuous" }
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Camera error:", err);
+                alert("Camera permission denied or not found.");
+            }
+        }
+
+        // --- Core Logic: Capture & Process ---
+        document.getElementById('captureBtn').addEventListener('click', async () => {
+            const key = apiKeyInput.value;
+            if (!key) return alert("Please enter an API Key first.");
+
+            loadingOverlay.classList.remove('hidden');
+            
+            try {
+                // 1. Capture Frame
+                const context = canvas.getContext('2d');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+                // 2. Initialize Gemini
+                const genAI = new GoogleGenerativeAI(key);
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+                const prompt = `Act as a precision OCR engine. Extract the 5-digit sample code (include all trailing letters/symbols) and the laminate name. Return ONLY a JSON object: {"code": "...", "name": "..."}. If the image is blurry or data is missing, return {"error": "retry"}.`;
+
+                const result = await model.generateContent([
+                    prompt,
+                    { inlineData: { data: base64Image, mimeType: "image/jpeg" } }
+                ]);
+
+                const response = await result.response;
+                let text = response.text().trim();
+                
+                // Clean markdown if Gemini returns it
+                text = text.replace(/```json|```/g, "");
+                const data = JSON.parse(text);
+
+                if (data.error === "retry") {
+                    alert("Scan failed. Please ensure the label is in focus and retry.");
+                } else {
+                    addRecord(data.code, data.name);
+                }
+
+            } catch (err) {
+                console.error("Processing Error:", err);
+                alert("Error: Check API key or connection. " + err.message);
+            } finally {
+                loadingOverlay.classList.add('hidden');
+            }
+        });
+
+        // --- Table & Accumulator Management ---
+        function addRecord(code, name) {
+            const record = {
+                id: Date.now(),
+                code,
+                name,
+                timestamp: new Date().toLocaleString()
+            };
+            scannedData.unshift(record);
+            renderTable();
+            window.navigator.vibrate?.(50); // Feedback for Android
+        }
+
+        function deleteRecord(id) {
+            scannedData = scannedData.filter(item => item.id !== id);
+            renderTable();
+        }
+
+        function renderTable() {
+            emptyState.style.display = scannedData.length ? 'none' : 'block';
+            tableBody.innerHTML = scannedData.map(item => `
+                <tr class="border-b border-slate-700/50">
+                    <td class="p-3 font-mono text-blue-300">${item.code}</td>
+                    <td class="p-3">${item.name}</td>
+                    <td class="p-3 text-right">
+                        <button onclick="window.deleteEntry(${item.id})" class="text-red-400 hover:text-red-300 font-bold px-2 py-1">✕</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Global bridge for inline onclick
+        window.deleteEntry = deleteRecord;
+
+        // --- Export Engine ---
+        document.getElementById('exportBtn').addEventListener('click', () => {
+            if (scannedData.length === 0) return alert("No data to export.");
+
+            const headers = "Sample Code,Laminate Name,Timestamp\n";
+            const rows = scannedData.map(r => `"${r.code}","${r.name}","${r.timestamp}"`).join("\n");
+            const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+            
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `Laminate_Data_${new Date().toISOString().slice(0,10)}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    </script>
+</body>
+</html>
