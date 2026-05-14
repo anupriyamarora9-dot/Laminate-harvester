@@ -134,7 +134,7 @@
 
                 // 2. Initialize Gemini
                 const genAI = new GoogleGenerativeAI(key);
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
                 const prompt = `Act as a precision OCR engine. Extract the 5-digit sample code (include all trailing letters/symbols) and the laminate name. Return ONLY a JSON object: {"code": "...", "name": "..."}. If the image is blurry or data is missing, return {"error": "retry"}.`;
 
